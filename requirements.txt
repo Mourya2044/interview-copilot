@@ -1,0 +1,8 @@
+numpy==2.4.1
+scipy==1.17.0
+PyAudio==0.2.14
+vosk==0.3.45
+python-dotenv==1.2.1
+colorama==0.4.6
+silero-vad==6.2.0
+torch==2.10.0
