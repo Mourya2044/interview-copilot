@@ -43,17 +43,14 @@ async def main():
     except asyncio.CancelledError:
         pass
     except KeyboardInterrupt:
-        print("\n[System] Shutdown signal received...")
-    finally:
-        print("[System] Cleaning up resources...")
-        print("[System] Safe to exit. Goodbye!")
+        interviewer_stt.stop()
 
 if __name__ == "__main__":
-    print_audio_devices()
     try:
+        print("Run the audio_devices.py script to list available audio input!")
         user_input = input("Enter your microphone device index (default 1): ")
         DEVICE_INDEX = int(user_input) if user_input.strip() else 1
         
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n[System] Interrupted during setup.")
+        print("[System] Exiting...")

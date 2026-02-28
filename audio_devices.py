@@ -1,6 +1,5 @@
 import pyaudio
 
-
 def print_audio_devices():
     p = pyaudio.PyAudio()
 
@@ -9,7 +8,6 @@ def print_audio_devices():
         print(f"{info['index']}: {info['name']}")
         
     p.terminate()
-
 
 if __name__ == "__main__":
     print_audio_devices()
