@@ -4,13 +4,13 @@ import dotenv
 from audio_devices import print_audio_devices
 from stt.realtimeSTT import realtimeSTT
 from nlp.classifier import NLPClassifier
-from answers.llm_answer_generation import LLMAnswerGenerator
+from nlp.answer_generation import AnswerGenerator
 
 dotenv.load_dotenv()
 
 DEVICE_INDEX = 1
 classifier = NLPClassifier()
-llm_generator = LLMAnswerGenerator()
+llm_generator = AnswerGenerator()
 
 async def final_transcription(text):
     # print(f"[Final Transcription]: {text}")

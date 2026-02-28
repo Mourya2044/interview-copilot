@@ -13,7 +13,7 @@ class LLMAnswer:
     mode: LLMMode
     confidence: float
     
-class LLMAnswerGenerator:
+class AnswerGenerator:
     MAX_HISTORY = 10  # limit history to prevent token explosion
 
     def __init__(self, on_answer=None):

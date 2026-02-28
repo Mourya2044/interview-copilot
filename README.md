@@ -1,108 +1,105 @@
-# 🎙️ Interview Copilot
+# Interview Copilot
 
-**Interview Copilot** is a real-time AI assistant designed to help candidates during interviews by transcribing questions and generating concise, professional answers on the fly. It leverages high-performance Speech-to-Text (STT) and state-of-the-art Large Language Models (LLMs) via the Groq API.
+**Interview Copilot** is a high-performance, real-time AI assistant built to support candidates during interviews. By transcribing audio on the fly and generating concise, professional answers using state-of-the-art LLMs via the Groq API, it provides a seamless second-brain experience for technical and behavioral assessments.
 
 ---
 
-## 🏗️ Architecture
+## System Architecture
 
 ```mermaid
 graph TD
-    A[Microphone Input] --> B[RealtimeSTT]
-    B -->|Partial Transcripts| C[User Interface/CLI]
+    A[Audio Input] -->|Live Stream| B[RealtimeSTT]
+    B -->|Partial Transcripts| C[Console UI]
     B -->|Final Sentence| D[NLP Classifier]
-    D -->|Is it a Question?| E{Decision}
-    E -->|Yes| F[LLM Answer Generator]
-    E -->|No| G[Ignore/Wait]
+    D -->|Respond Intent| E{Decision Engine}
+    E -->|Trigger| F[LLM Answer Generator]
+    E -->|Ignore| G[Wait for Input]
     F -->|Generated Answer| C
 ```
 
 ---
 
-## 🚀 Features
+## Key Features
 
--   **Real-time Transcription**: Uses `RealtimeSTT` (powered by `faster-whisper`) for low-latency, accurate speech recognition.
--   **Intelligent Intent Classification**: Automatically distinguishes between interview questions, filler speech, and background noise.
--   **AI Answer Generation**: Generates clear, 2-3 sentence answers tailored for verbal interviews using Groq's high-speed inference.
--   **Context-Aware**: Maintains a rolling history of the conversation to provide relevant follow-up answers.
--   **Interactive Setup**: Easily identify and select your microphone device index.
+-   **Low-Latency Transcription**: Powered by `RealtimeSTT` (utilizing `faster-whisper`) for near-instant speech recognition.
+-   **Intelligent Intent Classification**: Automatically distinguishes between interviewer questions, conversational filler, and background noise.
+-   **Context-Aware Responses**: Generates 2-3 sentence answers tailored for verbal interviews, maintaining a rolling conversation history for follow-ups.
+-   **Streaming Output**: Displays partial transcripts and generated answers in real-time for immediate feedback.
+-   **Optimized Inference**: Leverages Groq's high-speed cloud infrastructure for sub-second LLM responses.
 
 ---
 
-## 🛠️ Tech Stack
+## Technical Stack
 
--   **STT Engine**: [RealtimeSTT](https://github.com/KoljaB/RealtimeSTT) (Faster-Whisper)
--   **LLM Inference**: [Groq Cloud SDK](https://console.groq.com/)
--   **Audio Handling**: PyAudio
--   **Language**: Python 3.9+
+-   **STT Engine**: [RealtimeSTT](https://github.com/KoljaB/RealtimeSTT) (`faster-whisper`)
+-   **LLM Provider**: [Groq Cloud SDK](https://console.groq.com/)
+-   **Audio Backend**: PyAudio
 -   **Models**: 
-    -   Transcription: `tiny.en` (real-time) & `base.en` (final)
-    -   Intelligence: `llama-3.3-70b` (or configured via Groq)
+    -   *Transcription*: `tiny.en` (real-time) & `base.en` (final)
+    -   *Intelligence*: Groq-optimized Large Language Models
 
 ---
 
-## 📦 Installation
+## Installation & Setup
 
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/yourusername/interview-copilot.git
-    cd "interview copilot"
-    ```
+### 1. Prerequisites
+-   **Python 3.9+**
+-   **FFmpeg**: Required for audio processing.
+    -   *Windows*: `choco install ffmpeg`
+    -   *macOS*: `brew install ffmpeg`
+-   **PortAudio**: Required for PyAudio (if not pre-installed).
 
-2.  **Install dependencies**:
-    ```bash
-    pip install -r requirements.txt
-    ```
+### 2. Clone and Install
+```bash
+git clone <repository-url>
+cd "interview copilot"
+pip install -r requirements.txt
+```
 
-3.  **System Dependencies**:
-    -   **FFmpeg**: Required for audio processing.
-        -   Windows: `choco install ffmpeg`
-        -   macOS: `brew install ffmpeg`
-    -   **PortAudio**: Required for PyAudio (if not bundled).
-
-4.  **Configure Environment**:
-    Create a `.env` file in the root directory:
-    ```env
-    GROQ_API_KEY=your_groq_api_key_here
-    ```
+### 3. Environment Configuration
+Create a `.env` file in the root directory:
+```env
+GROQ_API_KEY=your_groq_api_key_here
+```
 
 ---
 
-## 🚦 Usage
+## Usage
 
-1.  **Identify Microphone**:
-    Run the utility to find your device index:
-    ```bash
-    python audio_devices.py
-    ```
+### Step 1: Identify Your Microphone
+Run the utility to find the index of your preferred audio input device:
+```bash
+python audio_devices.py
+```
 
-2.  **Start the Assistant**:
-    ```bash
-    python main.py
-    ```
-    -   Input your microphone index when prompted (defaults to 1).
-    -   The system will start listening and output results to the console.
-
----
-
-## 📂 Project Structure
-
--   `main.py`: The orchestrator for the STT-NLP-LLM pipeline.
--   `audio_devices.py`: Utility to list audio input devices.
--   `stt/`: Contains the `RealtimeSTT` wrapper and configuration.
--   `nlp/`: Logic for classifying transcripts and identifying intents.
--   `answers/`: LLM prompt engineering and answer generation logic.
+### Step 2: Configure and Launch
+1. Open `main.py` and set `DEVICE_INDEX` to your microphone's index (default is `1`).
+2. Start the assistant:
+```bash
+python main.py
+```
 
 ---
 
-## 🔧 Troubleshooting
+## Project Structure
 
--   **No Audio Detected**: Ensure the `DEVICE_INDEX` in `main.py` or the input prompt matches your microphone from `audio_devices.py`.
--   **Groq Errors**: Verify your API key in `.env` and check your rate limits on the Groq dashboard.
--   **Low Accuracy**: The system uses `tiny.en` for speed; you can upgrade to `small.en` or `medium.en` in `stt/realtimeSTT.py` if your hardware allows.
+-   `main.py`: The central orchestrator for the STT-NLP-LLM pipeline.
+-   `audio_devices.py`: Utility script to list available audio input indices.
+-   `stt/`: Contains the `RealtimeSTT` integration and configuration.
+-   `nlp/`:
+    -   `classifier.py`: LLM-based logic for identifying speech intent and actions.
+    -   `answer_generation.py`: Prompt engineering and response generation logic.
 
 ---
 
-## ⚠️ Disclaimer
+## Troubleshooting
 
-This tool is for educational and preparation purposes only. Please adhere to the rules and ethical guidelines of any interview process you participate in.
+-   **Audio Input Issues**: Ensure the `DEVICE_INDEX` in `main.py` matches the output from `audio_devices.py`.
+-   **API Rate Limits**: Check your Groq dashboard if you encounter connection or rate-limit errors.
+-   **Transcription Accuracy**: If performance allows, the models can be upgraded to `small.en` or `medium.en` in `stt/realtimeSTT.py` for higher precision.
+
+---
+
+## Disclaimer
+
+This tool is designed for educational and preparation purposes. Please ensure your use of this assistant complies with the ethical guidelines and rules of your specific interview process.
