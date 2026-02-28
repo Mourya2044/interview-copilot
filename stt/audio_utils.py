@@ -9,7 +9,7 @@ def debug_amplitude(pcm_16k: bytes, name: str):
     print(f"[{name}] AMP mean={mean_amp:.1f} max={max_amp}")
 
 
-def stereo_44k_to_mono_16k(pcm_bytes: bytes) -> bytes:
+def stereo_to_mono_16k(pcm_bytes: bytes, input_rate: int = 44100) -> bytes:
     """
     Convert stereo 44.1kHz PCM → mono 16kHz PCM
     """
@@ -19,7 +19,7 @@ def stereo_44k_to_mono_16k(pcm_bytes: bytes) -> bytes:
 
     # naive but fast resample
     resampled = np.interp(
-        np.linspace(0, len(mono), int(len(mono) * 16000 / 44100), endpoint=False),
+        np.linspace(0, len(mono), int(len(mono) * 16000 / input_rate), endpoint=False),
         np.arange(len(mono)),
         mono
     )

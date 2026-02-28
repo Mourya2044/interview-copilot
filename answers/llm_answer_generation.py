@@ -1,12 +1,33 @@
-import os
-from groq import AsyncGroq
-from answers.llm_types import LLMAnswer, LLMMode
+import requests
+from dotenv import load_dotenv
+from dataclasses import dataclass
 
+from answers.llm_types import LLMAnswer
+load_dotenv()
+
+from langchain.chat_models import init_chat_model
+# from langchain.messages import SystemMessage, HumanMessage, AIMessage
+from langchain.agents import create_agent
+from langchain.tools import tool, ToolRuntime
+from langgraph.checkpoint.memory import InMemorySaver
+
+system_prompt = (
+            "You generate spoken interview answers. "
+            "Use prior conversation context if relevant. "
+            "Be concise, confident, and natural. "
+            "No markdown. No bullet points. No meta commentary."
+        )
 
 class LLMAnswerGenerator:
     def __init__(self, api_key: str | None = None):
-        self.client = AsyncGroq(
-            api_key=api_key or os.getenv("GROQ_API_KEY")
+        self.checkpointer = InMemorySaver()
+        self.config = {'configurable': {'thread_id': 1}}
+        self.model = init_chat_model('gpt-4.1-mini', temperature=0.1)
+        self.agent = create_agent(
+            model=self.model,
+            system_prompt=system_prompt,
+            response_format=LLMAnswer,
+            checkpointer=self.checkpointer
         )
 
     async def generate(
@@ -15,10 +36,8 @@ class LLMAnswerGenerator:
         intent: str,
         mode: str = "concise",
     ) -> LLMAnswer:
-
+        # print(f"[LLM GENERATOR] Generating answer for intent='{intent}' with question: {question}")
         prompt = f"""
-You are helping a candidate answer an interview question verbally.
-
 Question:
 {question}
 
@@ -38,16 +57,14 @@ Answer:
 
 
         try:
-            response = await self.client.chat.completions.create(
-                model="openai/gpt-oss-120b",
-                messages=[
+            response = self.agent.invoke({
+                'messages': [
                     {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                max_tokens=180 if mode == "concise" else 350,
+                ]},
+                config=self.config, # type: ignore
             )
 
-            content = response.choices[0].message.content
+            content = response['structured_response'].text
             text = content.strip() if content is not None else ""
 
             return LLMAnswer(
@@ -75,7 +92,7 @@ Answer:
             text = "Ask a clarifying question or explain your thinking briefly."
 
         return LLMAnswer(
-            text=f"[Groq unavailable: {reason}] {text}",
+            text=f"[OPENAI unavailable: {reason}] {text}",
             mode="concise",
             confidence=0.4,
         )

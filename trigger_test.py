@@ -2,8 +2,8 @@ from nlp.question_event import QuestionEvent
 from nlp.question_event import QuestionEvent
 from nlp.confidence import confidence_score
 import time
-from nlp.classifier import NLPClassifier
-from answers.llm_answer_generation import LLMAnswerGenerator
+from nlp.classifier_old import NLPClassifier
+from answers.llm_answer_generation_old import LLMAnswerGenerator
 from openai import OpenAI
 import os
 import dotenv

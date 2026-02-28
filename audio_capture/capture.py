@@ -10,8 +10,10 @@ CHUNK = 1024
 
 
 class AudioCapture:
-    def __init__(self, device_index: int):
+    def __init__(self, device_index: int, rate: int = RATE, channels: int = CHANNELS):
         self.device_index = device_index
+        self.rate = rate
+        self.channels = channels
 
         self._p: pyaudio.PyAudio | None = None
         self._stream = None
@@ -65,8 +67,8 @@ class AudioCapture:
         self._p = pyaudio.PyAudio()
         self._stream = self._p.open(
             format=FORMAT,
-            channels=CHANNELS,
-            rate=RATE,
+            channels=self.channels,
+            rate=self.rate,
             input=True,
             input_device_index=self.device_index,
             frames_per_buffer=CHUNK,

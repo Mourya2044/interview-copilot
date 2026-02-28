@@ -1,15 +1,6 @@
 from dataclasses import dataclass
 from typing import Literal
 
-Intent = Literal[
-    "behavioral",
-    "algorithmic",
-    "system_design",
-    "clarification",
-    "filler",
-    "unknown",
-]
-
 Action = Literal[
     "respond",
     "wait",
@@ -18,7 +9,7 @@ Action = Literal[
 
 @dataclass
 class ClassificationResult:
-    intent: Intent
+    intent: str
     action: Action
     confidence: float
     reasoning: str
