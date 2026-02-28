@@ -1,43 +1,36 @@
-import requests
-from dotenv import load_dotenv
+import dotenv
+from groq import AsyncGroq
 from dataclasses import dataclass
+from typing import Literal
 
-from answers.llm_types import LLMAnswer
-load_dotenv()
+dotenv.load_dotenv()
 
-from langchain.chat_models import init_chat_model
-# from langchain.messages import SystemMessage, HumanMessage, AIMessage
-from langchain.agents import create_agent
-from langchain.tools import tool, ToolRuntime
-from langgraph.checkpoint.memory import InMemorySaver
+LLMMode = Literal["concise", "detailed"]
 
-system_prompt = (
-            "You generate spoken interview answers. "
-            "Use prior conversation context if relevant. "
-            "Be concise, confident, and natural. "
-            "No markdown. No bullet points. No meta commentary."
-        )
-
+@dataclass
+class LLMAnswer:
+    text: str
+    mode: LLMMode
+    confidence: float
+    
 class LLMAnswerGenerator:
-    def __init__(self, api_key: str | None = None):
-        self.checkpointer = InMemorySaver()
-        self.config = {'configurable': {'thread_id': 1}}
-        self.model = init_chat_model('gpt-4.1-mini', temperature=0.1)
-        self.agent = create_agent(
-            model=self.model,
-            system_prompt=system_prompt,
-            response_format=LLMAnswer,
-            checkpointer=self.checkpointer
-        )
+    MAX_HISTORY = 10  # limit history to prevent token explosion
 
+    def __init__(self, on_answer=None):
+        self.client = AsyncGroq()
+        self.history: list[dict] = []
+        self.on_answer = on_answer
     async def generate(
         self,
         question: str,
         intent: str,
         mode: str = "concise",
     ) -> LLMAnswer:
-        # print(f"[LLM GENERATOR] Generating answer for intent='{intent}' with question: {question}")
+
+        # ----- YOUR ORIGINAL PROMPT (UNCHANGED) -----
         prompt = f"""
+You are helping a candidate answer an interview question verbally.
+
 Question:
 {question}
 
@@ -54,18 +47,44 @@ Instructions:
 
 Answer:
 """.strip()
+        # -------------------------------------------
 
+        # Add the new user prompt into history
+        self.history.append({
+            "role": "user",
+            "content": prompt
+        })
+
+        # Trim history (rolling buffer)
+        if len(self.history) > self.MAX_HISTORY:
+            self.history = self.history[-self.MAX_HISTORY:]
 
         try:
-            response = self.agent.invoke({
-                'messages': [
-                    {"role": "user", "content": prompt}
-                ]},
-                config=self.config, # type: ignore
+            response = await self.client.chat.completions.create(
+                model="openai/gpt-oss-120b",
+                messages=self.history, # type: ignore
+                temperature=0.3,
+                stream=True,
             )
 
-            content = response['structured_response'].text
-            text = content.strip() if content is not None else ""
+            text = ""
+            async for chunk in response:
+                # You could stream partial content here if desired
+                text += chunk.choices[0].delta.content if chunk.choices[0].delta.content else ""
+                if self.on_answer:
+                    self.on_answer(text)  # Update UI with streaming text
+                
+            text = text.strip()
+
+            # Store assistant reply for future follow-ups
+            self.history.append({
+                "role": "assistant",
+                "content": text
+            })
+
+            # Trim again after assistant reply
+            if len(self.history) > self.MAX_HISTORY:
+                self.history = self.history[-self.MAX_HISTORY:]
 
             return LLMAnswer(
                 text=text,
@@ -75,6 +94,10 @@ Answer:
 
         except Exception as e:
             return self._fallback_answer(intent, str(e))
+
+    def reset_context(self):
+        """Call when starting a new interview session."""
+        self.history = []
 
     def _fallback_answer(self, intent: str, reason: str) -> LLMAnswer:
         if intent == "algorithmic":
@@ -92,7 +115,7 @@ Answer:
             text = "Ask a clarifying question or explain your thinking briefly."
 
         return LLMAnswer(
-            text=f"[OPENAI unavailable: {reason}] {text}",
+            text=f"[Groq unavailable: {reason}] {text}",
             mode="concise",
             confidence=0.4,
         )

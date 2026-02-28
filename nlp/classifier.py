@@ -1,116 +1,125 @@
-from dotenv import load_dotenv
-from langchain.chat_models import init_chat_model
-from nlp.classifier_types import ClassificationResult
+import os
+import json
+import dotenv
+from groq import AsyncGroq
+from dataclasses import dataclass
+from typing import Literal
 
-load_dotenv()
+dotenv.load_dotenv()
 
+Action = Literal[
+    "respond",
+    "wait",
+    "ignore",
+]
+
+@dataclass
+class ClassificationResult:
+    intent: str
+    action: Action
+    confidence: float
+    reasoning: str
 
 class NLPClassifier:
     """
-    Context-aware interview classifier.
-    Keeps rolling conversation memory for follow-up detection.
+    Flexible LLM-based classifier with context memory.
     """
 
-    MAX_HISTORY = 4  # keep last few messages only
+    MAX_HISTORY = 10  # prevent token explosion
 
-    def __init__(self, api_key: str | None = None):
-        self.model = (
-            init_chat_model(
-                "gpt-4.1-mini",
-                temperature=0,
-            )
-            .with_structured_output(ClassificationResult)
-        )
-
-        self.history = []
+    def __init__(self):
+        self.client = AsyncGroq()
+        self.history: list[dict] = []
 
     async def classify(self, text: str) -> ClassificationResult:
-        print(f"[CLASSIFIER] Classifying: {text}")
+        # print(f"[CLASSIFIER] Classifying: {text}")
         text = text.strip()
 
-        if not text:
+        # Fast STT guard
+        if not text or len(text.split()) < 2:
             return ClassificationResult(
-                intent="none",
+                intent="filler",
                 action="ignore",
-                confidence=1.0,
-                reasoning="Empty text",
+                confidence=0.9,
+                reasoning="Too short or likely STT fragment",
             )
-
-        # Basic cheap pre-filter
-        lower = text.lower()
-        if lower in {"okay", "ok", "thanks", "thank you", "great", "nice"}:
-            return ClassificationResult(
-                intent="none",
-                action="ignore",
-                confidence=0.95,
-                reasoning="Acknowledgement",
-            )
-
-        # print(f"[CLASSIFIER] History length: {len(self.history)}")
-        # Add current message to rolling context
-        self.history.append({"role": "user", "content": text})
-        if len(self.history) > self.MAX_HISTORY:
-            self.history = self.history[-self.MAX_HISTORY:]
 
         system_prompt = """
 You classify interview speech transcripts.
 
-Only classify the MOST RECENT message.
-Do not infer intent from older messages unless the latest message is meaningful.
-
-Return structured output only and keep it extremely concise.
-
-Types:
-- question
-- follow_up
-- not_a_question
+Return ONLY valid JSON:
+{
+  "intent": string,
+  "action": "respond | ignore",
+  "confidence": number (0.0-1.0),
+  "reasoning": string
+}
 
 Rules:
 
-1. If the latest message is:
-   - Filler (yeah, hmm, okay)
-   - Single word (unless clearly a question like "Why?")
-   - Grammatically invalid
-   - Incomplete or nonsensical
-   → classify as not_a_question
-   → intent = none
-   → action = ignore
+1. If the text is filler, incomplete, broken, random, or grammatically invalid:
+   action = ignore
 
-2. question:
-   - Clear, complete standalone interview question.
+2. If the text is a clear interview question:
+   action = respond
 
-3. follow_up:
-   - Latest message must be a meaningful complete sentence
-   - AND continue the previous topic.
+3. Intent should be a short descriptive label.
 
-4. If the latest message is unclear or broken,
-   ignore previous context and return not_a_question.
+4. Be conservative.
+   When unsure, prefer action = ignore.
 
-Be conservative.
-When unsure, choose not_a_question.
+Only classify the latest message.
+Use previous messages only if the latest message is meaningful.
+Provide extremely concise reasoning.
 """
 
-        messages = [{"role": "system", "content": system_prompt}] + self.history
+        # Add latest message to history
+        # self.history.append({"role": "user", "content": text})
+
+        # Trim history
+        if len(self.history) > self.MAX_HISTORY:
+            self.history = self.history[-self.MAX_HISTORY:]
 
         try:
-            # print(f"[CLASSIFIER] Sending to model with {len(messages)} messages")
-            result = self.model.invoke(messages) # type: ignore
-            # print(f"[CLASSIFIER] Model result: {result}")
+            messages = [{"role": "system", "content": system_prompt}] + self.history + [{"role": "user", "content": text}]
+
+            response = await self.client.chat.completions.create(
+                model="openai/gpt-oss-120b",
+                messages=messages, # type: ignore
+                temperature=0,
+                response_format={"type": "json_object"},
+            )
+
+            content = response.choices[0].message.content
+            parsed = json.loads(content)  # type: ignore
+
+            print(f"[CLASSIFIER] Parsed result: {parsed}")
+
+            # Store assistant reply to maintain continuity
+            if parsed.get("action") == "respond":
+                self.history.append({
+                    "role": "assistant",
+                    "content": content
+                })
+
+            if len(self.history) > self.MAX_HISTORY:
+                self.history = self.history[-self.MAX_HISTORY:]
+
             return ClassificationResult(
-                intent=result['intent'], # type: ignore
-                action=result['action'], # type: ignore
-                confidence=result['confidence'], # type: ignore
-                reasoning=result['reasoning'], # type: ignore
+                intent=parsed.get("intent", "unknown"),
+                action=parsed.get("action", "ignore"),
+                confidence=float(parsed.get("confidence", 0.5)),
+                reasoning=parsed.get("reasoning", ""),
             )
 
         except Exception as e:
-            print(f"[CLASSIFIER] Error during classification: {str(e)}")
             return ClassificationResult(
                 intent="unknown",
                 action="ignore",
                 confidence=0.0,
-                reasoning=f"Classification error: {str(e)}",
+                reasoning=f"LLM classification error: {str(e)}",
             )
 
     def reset_context(self):
+        """Call when starting a new interview session."""
         self.history = []

@@ -1,6 +1,4 @@
 /.venv
 /.env
-/models
 /*/__pycache__
 /__pycache__
-/client_secret.json
