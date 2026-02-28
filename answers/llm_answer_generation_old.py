@@ -6,12 +6,12 @@ from answers.llm_types import LLMAnswer, LLMMode
 class LLMAnswerGenerator:
     MAX_HISTORY = 10  # limit history to prevent token explosion
 
-    def __init__(self, api_key: str | None = None):
+    def __init__(self, api_key: str | None = None, on_answer=None):
         self.client = AsyncGroq(
             api_key=api_key or os.getenv("GROQ_API_KEY")
         )
         self.history: list[dict] = []
-
+        self.on_answer = on_answer
     async def generate(
         self,
         question: str,
@@ -55,11 +55,18 @@ Answer:
             response = await self.client.chat.completions.create(
                 model="openai/gpt-oss-120b",
                 messages=self.history, # type: ignore
-                temperature=0.3
+                temperature=0.3,
+                stream=True,
             )
 
-            content = response.choices[0].message.content
-            text = content.strip() if content else ""
+            text = ""
+            async for chunk in response:
+                # You could stream partial content here if desired
+                text += chunk.choices[0].delta.content if chunk.choices[0].delta.content else ""
+                if self.on_answer:
+                    self.on_answer(text)  # Update UI with streaming text
+                
+            text = text.strip()
 
             # Store assistant reply for future follow-ups
             self.history.append({

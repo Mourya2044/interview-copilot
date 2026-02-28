@@ -27,17 +27,17 @@ SYS_CHANNELS = 2
 
 async def main():
     mic_capture = AudioCapture(MIC_DEVICE_INDEX, rate=MIC_RATE, channels=MIC_CHANNELS)
-    sys_capture = AudioCapture(SYS_DEVICE_INDEX, rate=SYS_RATE, channels=SYS_CHANNELS)
+    # sys_capture = AudioCapture(SYS_DEVICE_INDEX, rate=SYS_RATE, channels=SYS_CHANNELS)
 
     await mic_capture.start()
-    await sys_capture.start()
+    # await sys_capture.start()
 
     mic_q = mic_capture.get_queue()
-    sys_q = sys_capture.get_queue()
+    # sys_q = sys_capture.get_queue()
 
     vosk = VoskSTT(MODEL_PATH, api_key=api_key)
 
-    mic_task = asyncio.create_task(vosk.run("Me", sys_q, input_rate=SYS_RATE))
+    # mic_task = asyncio.create_task(vosk.run("Me", sys_q, input_rate=SYS_RATE))
     sys_task = asyncio.create_task(vosk.run("Interviewer", mic_q, input_rate=MIC_RATE))
 
     print("Vosk STT running. Press Ctrl+C to stop.")
@@ -49,12 +49,13 @@ async def main():
     finally:
         print("\nShutting down...")
 
-        mic_task.cancel()
+        # mic_task.cancel()
         sys_task.cancel()
 
-        await asyncio.gather(mic_task, sys_task, return_exceptions=True)
+        # await asyncio.gather(mic_task, sys_task, return_exceptions=True)
+        await asyncio.gather(sys_task, return_exceptions=True)
         await mic_capture.stop()
-        await sys_capture.stop()
+        # await sys_capture.stop()
 
         print("Shutdown complete.")
 
