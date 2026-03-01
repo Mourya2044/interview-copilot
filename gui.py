@@ -1,307 +1,235 @@
 import customtkinter as ctk
 import asyncio
 import threading
-import pyaudio
+import ctypes
 from stt.realtimeSTT import realtimeSTT
 from nlp.classifier import NLPClassifier
 from nlp.answer_generation import AnswerGenerator
-import ctypes
 
-# Add these constants at the top of your file
+# --- Win32 Stealth Constants ---
 GWL_EXSTYLE = -20
 WS_EX_LAYERED = 0x80000
 WS_EX_TRANSPARENT = 0x20
+WDA_EXCLUDEFROMCAPTURE = 0x00000011
+WS_EX_TOOLWINDOW = 0x00000080  # The secret to hiding from Taskbar
+WS_EX_APPWINDOW = 0x00040000   # The style we want to remove
 
 def set_click_through(hwnd, enabled=True):
-    """
-    Enables or disables mouse click-through for the window.
-    """
     try:
         style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
         if enabled:
-            # Add transparent and layered styles
             style |= (WS_EX_TRANSPARENT | WS_EX_LAYERED)
         else:
-            # Remove transparent style
             style &= ~WS_EX_TRANSPARENT
         ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
-    except Exception as e:
-        print(f"Error setting click-through: {e}")
+    except Exception: pass
 
 def ensure_stealth(window):
-    """
-    Excludes the window from all screen capture and recording.
-    """
-    # WDA_EXCLUDEFROMCAPTURE (0x00000011) is supported on Windows 10 version 2004+
-    # It makes the window invisible to capture but fully visible to the user.
     try:
-        hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
-        ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, 0x00000011)
-    except Exception as e:
-        # Fallback to WDA_MONITOR (0x01) for older Windows 10 versions
-        ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, 0x00000001)
+        hwnd = ctypes.windll.user32.GetParent(window.winfo_id()) or window.winfo_id()
+        ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)
+    except Exception: pass
 
-class ModernCopilotGUI(ctk.CTk):
+class UltraMinimalHUD(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        # Window Configuration
-        self.title("Interview Copilot")
-        self.geometry("900x650")
-        # ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
-        
-        
-        # --- STEALTH COMMANDS ---
-        self.attributes("-alpha", 0.70)  # Makes the window semi-transparent
-        self.attributes("-topmost", True)  # Keeps the window floating over other apps
-        # We use after() to ensure the window is fully rendered before applying protection
-        self.after(100, lambda: self.apply_initial_styles) 
-        # ------------------------
+        # --- Window Setup ---
+        self.geometry("900x80")
+        self.overrideredirect(True)
+        self.attributes("-topmost", True)
+        self.attributes("-alpha", 0.9)
+        self.configure(fg_color="#0d0d0d")
 
-        # Handle window close button
-        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.accent = "#50fa7b"
+        self.active = False
 
-        # Grid layout
-        self.grid_columnconfigure(1, weight=1)
+        # --- Layout ---
+        self.grid_columnconfigure(1, weight=0) 
+        self.grid_columnconfigure(2, weight=1) 
         self.grid_rowconfigure(0, weight=1)
 
-        # Sidebar
-        self.sidebar = ctk.CTkFrame(self, width=200, corner_radius=0)
-        self.sidebar.grid(row=0, column=0, sticky="nsew")
-        self.sidebar_label = ctk.CTkLabel(self.sidebar, text="System Control", font=ctk.CTkFont(size=20, weight="bold"))
-        self.sidebar_label.grid(row=0, column=0, padx=20, pady=(20, 10))
+        # 1. DRAG HANDLE
+        self.drag_handle = ctk.CTkFrame(self, width=25, corner_radius=0, fg_color="#1a1a1a")
+        self.drag_handle.grid(row=0, column=0, sticky="nsew")
         
-        self.sidebar.bind("<ButtonPress-1>", self.start_move)
-        self.sidebar.bind("<B1-Motion>", self.do_move)
-        
-        # Audio Device Selector
-        self.device_label = ctk.CTkLabel(self.sidebar, text="Select Microphone:")
-        self.device_label.grid(row=1, column=0, padx=20, pady=(10, 0))
-        
-        self.device_map = self.get_audio_devices()
-        self.device_dropdown = ctk.CTkOptionMenu(self.sidebar, values=list(self.device_map.keys()))
-        self.device_dropdown.set(list(self.device_map.keys())[2])
-        self.device_dropdown.grid(row=2, column=0, padx=20, pady=10)
+        self.handle_label = ctk.CTkLabel(self.drag_handle, text="⋮\n⋮\n⋮", padx=10, 
+                                        text_color="#444", font=("Arial", 16))
+        self.handle_label.pack(expand=True)
 
-        self.status_label = ctk.CTkLabel(self.sidebar, text="Status: Ready", text_color="gray")
-        self.status_label.grid(row=3, column=0, padx=20, pady=10)
+        # 2. TOGGLE BUTTON
+        self.btn_toggle = ctk.CTkButton(self, text="▶", width=40, height=40, 
+                                       fg_color="transparent", text_color=self.accent, 
+                                       hover_color="#222", font=("Arial", 18, "bold"),
+                                       command=self.toggle_session)
+        self.btn_toggle.grid(row=0, column=1, padx=10, sticky="n", pady=5)
 
-        self.start_btn = ctk.CTkButton(self.sidebar, text="Start Session", command=self.start_session)
-        self.start_btn.grid(row=4, column=0, padx=20, pady=10)
-        
-        self.stop_btn = ctk.CTkButton(self.sidebar, text="Stop Session", state="disabled", command=self.stop_session)
-        self.stop_btn.grid(row=5, column=0, padx=20, pady=10)
+        # 3. DISPLAY AREA
+        self.display_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.display_frame.grid(row=0, column=2, sticky="nsew", pady=5)
+        self.display_frame.grid_columnconfigure(0, weight=1)
 
-        self.check_mouse_position()
-        
-        # Allow dragging the window via the sidebar
-        self.start_btn.bind("<ButtonPress-1>", self.start_move)
-        self.stop_btn.bind("<ButtonPress-1>", self.start_move)
-        self.start_btn.bind("<B1-Motion>", self.do_move)
-        self.stop_btn.bind("<B1-Motion>", self.do_move)
-        
-        # Main Content Area
-        self.main_frame = ctk.CTkFrame(self, corner_radius=15)
-        self.main_frame.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
-        self.main_frame.grid_columnconfigure(0, weight=1)
-        self.main_frame.grid_rowconfigure(1, weight=1)
-        self.main_frame.grid_rowconfigure(4, weight=4)
+        self.transcript_line = ctk.CTkLabel(self.display_frame, text="System Standby", 
+                                          font=("Inter", 13), text_color="#666", anchor="w")
+        self.transcript_line.grid(row=0, column=0, sticky="ew")
 
-        # Transcription Display
-        self.transcript_label = ctk.CTkLabel(self.main_frame, text="Live Transcription", font=ctk.CTkFont(size=14, weight="bold"))
-        self.transcript_label.grid(row=0, column=0, padx=20, pady=(10, 0), sticky="w")
-        self.transcript_box = ctk.CTkTextbox(self.main_frame, height=150)
-        self.transcript_box.grid(row=1, column=0, padx=20, pady=10, sticky="nsew")
+        self.answer_box = ctk.CTkTextbox(self.display_frame, height=0, fg_color="#141414",
+                                       border_width=1, border_color=self.accent,
+                                       font=("Consolas", 13), text_color=self.accent, 
+                                       wrap="word", corner_radius=4)
+        self.answer_box.grid(row=1, column=0, sticky="nsew", pady=(2, 2))
 
-        # AI Answer Display
-        self.answer_label = ctk.CTkLabel(self.main_frame, text="AI Suggested Answer", font=ctk.CTkFont(size=14, weight="bold"))
-        self.answer_label.grid(row=2, column=0, padx=20, pady=(10, 0), sticky="w")
-        self.answer_box = ctk.CTkTextbox(self.main_frame, height=250, fg_color="#2b2b2b", text_color="#50fa7b")
-        self.answer_box.grid(row=3, column=0, padx=20, pady=10, sticky="nsew")
-        
+        # 4. CLOSE BUTTON
+        self.close_btn = ctk.CTkButton(self, text="×", width=30, height=30,
+                                      fg_color="transparent", text_color="#ff5555",
+                                      hover_color="#331111", font=("Arial", 20),
+                                      command=self.on_closing)
+        self.close_btn.grid(row=0, column=3, padx=10, sticky="ne", pady=5)
+
+        # Logic
         self.classifier = NLPClassifier()
         self.llm_generator = AnswerGenerator()
         self.stt = None
-        self.loop = None
-    
-    def apply_initial_styles(self):
-        hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
-        if hwnd == 0: hwnd = self.winfo_id()
+
+        self.drag_handle.bind("<ButtonPress-1>", self.start_move)
+        self.drag_handle.bind("<B1-Motion>", self.do_move)
+        self.handle_label.bind("<ButtonPress-1>", self.start_move)
+        self.handle_label.bind("<B1-Motion>", self.do_move)
         
-        ensure_stealth(self)
-        # Optional: Start with click-through DISABLED so you can move the window
-        # set_click_through(hwnd, enabled=False)
+        self.after(10, self.hide_from_taskbar)
+        self.after(100, self.apply_initial_styles)
+        self.check_mouse_position()
+    
+    def hide_from_taskbar(self):
+        """Removes the application icon from the Windows Taskbar."""
+        try:
+            # Get the window handle (HWND)
+            hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
+            if hwnd == 0: hwnd = self.winfo_id()
+            
+            # Get current extended styles
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            
+            # Remove AppWindow style and Add ToolWindow style
+            style = style & ~WS_EX_APPWINDOW
+            style = style | WS_EX_TOOLWINDOW
+            
+            # Apply the new style
+            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
+            
+            # Force the window to update its taskbar presence
+            # By hiding and showing it quickly
+            self.withdraw()
+            self.after(10, self.deiconify)
+        except Exception as e:
+            print(f"Taskbar Stealth Error: {e}")
 
     def check_mouse_position(self):
-        """
-        Global loop that checks if the mouse is over the sidebar, 
-        independent of transparency.
-        """
         try:
-            # Get mouse position relative to screen
-            pointer_x = self.winfo_pointerx()
-            pointer_y = self.winfo_pointery()
-
-            # Get sidebar position and dimensions relative to screen
-            self.start_btn_x = self.start_btn.winfo_rootx()
-            self.start_btn_y = self.start_btn.winfo_rooty()
-            self.start_btn_w = self.start_btn.winfo_width()
-            self.start_btn_h = self.start_btn.winfo_height()
-            self.stop_btn_x = self.stop_btn.winfo_rootx()
-            self.stop_btn_y = self.stop_btn.winfo_rooty()
-            self.stop_btn_w = self.stop_btn.winfo_width()
-            self.stop_btn_h = self.stop_btn.winfo_height()
-
-            # Check if mouse is within sidebar bounds
-            in_start_btn = (self.start_btn_x <= pointer_x <= self.start_btn_x + self.start_btn_w and
-                          self.start_btn_y <= pointer_y <= self.start_btn_y + self.start_btn_h)
-            in_stop_btn = (self.stop_btn_x <= pointer_x <= self.stop_btn_x + self.stop_btn_w and
-                          self.stop_btn_y <= pointer_y <= self.stop_btn_y + self.stop_btn_h)
+            px, py = self.winfo_pointerx(), self.winfo_pointery()
+            widgets = [self.drag_handle, self.btn_toggle, self.close_btn]
+            over_interactive = False
+            for w in widgets:
+                wx, wy = w.winfo_rootx(), w.winfo_rooty()
+                ww, wh = w.winfo_width(), w.winfo_height()
+                if wx <= px <= wx + ww and wy <= py <= wy + wh:
+                    over_interactive = True
+                    break
             
-
-            # Update interaction state
-            self.toggle_interaction(in_start_btn or in_stop_btn)
-
-        except Exception:
-            pass
-        
-        # Run this check every 100ms
+            hwnd = ctypes.windll.user32.GetParent(self.winfo_id()) or self.winfo_id()
+            if over_interactive:
+                set_click_through(hwnd, enabled=False)
+                self.attributes("-alpha", 1.0)
+            elif self.active:
+                set_click_through(hwnd, enabled=True)
+                self.attributes("-alpha", 0.7)
+        except: pass
         self.after(100, self.check_mouse_position)
 
-    def toggle_interaction(self, interactive):
-        """Forces the window to be solid/interactive based on screen coordinates."""
-        hwnd = ctypes.windll.user32.GetParent(self.winfo_id()) or self.winfo_id()
-        
-        # Use a state flag to avoid flickering the Win32 API constantly
-        current_style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        is_transparent = current_style & WS_EX_TRANSPARENT
-
-        if interactive and is_transparent:
-            # Mouse is over sidebar: DISABLE click-through
-            set_click_through(hwnd, enabled=False)
-            # self.attributes("-alpha", 1.0)
-            self.status_label.configure(text_color="#50fa7b") # Visual feedback
-        
-        elif not interactive and not is_transparent:
-            # Mouse left sidebar: ENABLE click-through (only if session is active)
-            if self.stt and self.stt.running:
-                set_click_through(hwnd, enabled=True)
-                # self.attributes("-alpha", 0.70)
-                self.status_label.configure(text_color="gray")
-
     def start_move(self, event):
-        self.x = event.x
-        self.y = event.y
+        self.x, self.y = event.x, event.y
 
     def do_move(self, event):
-        deltax = event.x - self.x
-        deltay = event.y - self.y
-        x = self.winfo_x() + deltax
-        y = self.winfo_y() + deltay
-        self.geometry(f"+{x}+{y}")
-    
-    def get_audio_devices(self):
-        """Fetches available input devices."""
-        p = pyaudio.PyAudio()
-        devices = {}
-        for i in range(p.get_device_count()):
-            info = p.get_device_info_by_index(i)
-            if int(info.get('maxInputChannels', 0)) > 0:
-                devices[f"{i}: {info['name']}"] = i
-        p.terminate()
-        return devices
+        self.geometry(f"+{self.winfo_x() + (event.x - self.x)}+{self.winfo_y() + (event.y - self.y)}")
 
-    # ... inside ModernCopilotGUI class ...
+    def apply_initial_styles(self):
+        ensure_stealth(self)
 
-    async def gui_final_update(self, text):
-        # Schedule the UI update on the main thread
-        self.after(0, self.update_transcript, f"Question: {text}")
-        
-        res = await self.classifier.classify(text)
-        if res.action == "respond":
-            llm_answer = await self.llm_generator.generate(question=text, intent=res.intent)
-            # Schedule the AI answer update on the main thread
-            self.after(0, self.update_answer, llm_answer.text)
+    def toggle_session(self):
+        if not self.active:
+            # Starting Phase
+            self.active = True
+            self.btn_toggle.configure(text="...", text_color="#ffa620", state="disabled")
+            self.transcript_line.configure(text="Initializing...", text_color="#ffa620")
+            
+            # Use after() to let the UI update before blocking the thread with STT init
+            self.after(200, self.launch_stt_thread)
+        else:
+            # Stopping Phase
+            self.active = False
+            self.btn_toggle.configure(text="...", text_color="#ff5555", state="disabled")
+            self.transcript_line.configure(text="Stopping...", text_color="#ff5555")
+            
+            if self.stt:
+                self.stt.stop()
+                self.stt = None
+            
+            self.after(500, self.reset_ui_to_idle)
+
+    def launch_stt_thread(self):
+        try:
+            self.stt = realtimeSTT(
+                input_device_index=1, 
+                partial_update=self.gui_partial_update,
+                final_update=self.gui_final_update
+            )
+            threading.Thread(target=self.run_stt, daemon=True).start()
+            
+            self.btn_toggle.configure(text="■", text_color="#ff5555", state="normal")
+            self.transcript_line.configure(text="Listening...", text_color=self.accent)
+        except Exception as e:
+            self.transcript_line.configure(text=f"ERROR: {str(e)}", text_color="#ff5555")
+            self.reset_ui_to_idle()
+
+    def reset_ui_to_idle(self):
+        self.active = False
+        self.btn_toggle.configure(text="▶", text_color=self.accent, state="normal")
+        self.transcript_line.configure(text="Ready to assist.", text_color="#666")
+        self.answer_box.configure(height=0)
+        self.geometry("900x80")
 
     def gui_partial_update(self, text):
-        # Use after() to schedule the update, but ensure the method 
-        # it calls is purely for UI manipulation
-        self.after(0, self.update_transcript, text)
+        display_text = text[-90:] if len(text) > 90 else text
+        self.after(0, lambda: self.transcript_line.configure(text=f"• {display_text}", text_color="white"))
 
-    def update_transcript(self, text):
-        """Thread-safe update for the transcription box."""
+    async def gui_final_update(self, text):
+        self.after(0, lambda: self.transcript_line.configure(text=f"Q: {text}", text_color=self.accent))
+        res = await self.classifier.classify(text)
+        if res.action == "respond":
+            ans = await self.llm_generator.generate(question=text, intent=res.intent)
+            self.after(0, self.show_ai_response, ans.text)
+
+    def show_ai_response(self, text):
+        self.geometry("900x220") 
+        self.answer_box.configure(height=150)
+        self.answer_box.delete("1.0", "end")
+        self.answer_box.insert("1.0", text)
+
+    def run_stt(self):
+        if not self.stt: return
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         try:
-            self.transcript_box.delete("1.0", "end")
-            self.transcript_box.insert("1.0", text)
-            self.transcript_box.see("end")
-        except Exception as e:
-            print(f"UI Update Error: {e}")
-
-    def update_answer(self, text):
-        """Thread-safe update for the answer box."""
-        try:
-            self.answer_box.delete("1.0", "end")
-            self.answer_box.insert("1.0", text)
-            self.answer_box.see("end")
-        except Exception as e:
-            print(f"UI Update Error: {e}")
-
-    def start_session(self):
-        self.status_label.configure(text="Status: Starting...", text_color="#ffa620")
-        self.start_btn.configure(state="disabled")
-        self.device_dropdown.configure(state="disabled")
-        self.stop_btn.configure(state="normal")
-        
-        device_name = self.device_dropdown.get()
-        device_index = self.device_map[device_name]
-
-        # Initialize STT with selected device
-        self.stt = realtimeSTT(
-            name="Interviewer",
-            input_device_index=device_index,
-            partial_update=self.gui_partial_update,
-            final_update=self.gui_final_update
-        )
-        
-        # Launch logic in background thread
-        threading.Thread(target=self.run_logic, daemon=True).start()
-        self.status_label.configure(text="Status: Listening...", text_color="#50fa7b")
-        hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
-        if hwnd == 0: hwnd = self.winfo_id()
-        set_click_through(hwnd, enabled=True)
-        
-        self.title("Interview Copilot - Clickthrough Active")
-    
-    def on_ready(self):
-        self.status_label.configure(text="Status: Listening...", text_color="#50fa7b")
-
-    def stop_session(self):
-        if self.stt:
-            self.stt.stop()
-        self.status_label.configure(text="Status: Stopped", text_color="#ff5555")
-        self.start_btn.configure(state="normal")
-        self.stop_btn.configure(state="disabled")
-        hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
-        if hwnd == 0: hwnd = self.winfo_id()
-        set_click_through(hwnd, enabled=False)
-        self.title("Interview Copilot")
-
-    def run_logic(self):
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        if self.stt:
-            self.loop.run_until_complete(self.stt.start())
+            loop.run_until_complete(self.stt.start())
+        except Exception: pass
 
     def on_closing(self):
-        """Properly closes all resources before exiting."""
-        if self.stt:
-            self.stt.stop()
+        if self.stt: self.stt.stop()
         self.destroy()
 
 if __name__ == "__main__":
     try:
-        app = ModernCopilotGUI()
+        app = UltraMinimalHUD()
         app.mainloop()
     except KeyboardInterrupt:
         app.on_closing()
