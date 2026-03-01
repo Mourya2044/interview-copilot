@@ -4,43 +4,28 @@
 
 ---
 
-## System Architecture
+## 🚀 Key Features
 
-```mermaid
-graph TD
-    A[Audio Input] -->|Live Stream| B[RealtimeSTT]
-    B -->|Partial Transcripts| C[Console UI]
-    B -->|Final Sentence| D[NLP Classifier]
-    D -->|Respond Intent| E{Decision Engine}
-    E -->|Trigger| F[LLM Answer Generator]
-    E -->|Ignore| G[Wait for Input]
-    F -->|Generated Answer| C
-```
-
----
-
-## Key Features
-
+-   **Stealth Overlay Mode**: A modern, semi-transparent GUI that floats on top of all windows and is **excluded from screen capture** (invisible to Zoom, Microsoft Teams, and other recording software).
+-   **Click-Through Technology**: The overlay becomes click-through during active sessions, allowing you to interact with other applications while keeping the AI suggestions in view.
 -   **Low-Latency Transcription**: Powered by `RealtimeSTT` (utilizing `faster-whisper`) for near-instant speech recognition.
 -   **Intelligent Intent Classification**: Automatically distinguishes between interviewer questions, conversational filler, and background noise.
 -   **Context-Aware Responses**: Generates 2-3 sentence answers tailored for verbal interviews, maintaining a rolling conversation history for follow-ups.
--   **Streaming Output**: Displays partial transcripts and generated answers in real-time for immediate feedback.
 -   **Optimized Inference**: Leverages Groq's high-speed cloud infrastructure for sub-second LLM responses.
 
 ---
 
-## Technical Stack
+## 🛠️ Technical Stack
 
+-   **GUI Framework**: [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter)
 -   **STT Engine**: [RealtimeSTT](https://github.com/KoljaB/RealtimeSTT) (`faster-whisper`)
 -   **LLM Provider**: [Groq Cloud SDK](https://console.groq.com/)
 -   **Audio Backend**: PyAudio
--   **Models**: 
-    -   *Transcription*: `tiny.en` (real-time) & `base.en` (final)
-    -   *Intelligence*: Groq-optimized Large Language Models
+-   **Stealth Features**: Win32 API integration (`WDA_EXCLUDEFROMCAPTURE`)
 
 ---
 
-## Installation & Setup
+## 📦 Installation & Setup
 
 ### 1. Prerequisites
 -   **Python 3.9+**
@@ -64,26 +49,31 @@ GROQ_API_KEY=your_groq_api_key_here
 
 ---
 
-## Usage
+## 🎮 Usage
 
-### Step 1: Identify Your Microphone
-Run the utility to find the index of your preferred audio input device:
+### Option A: Stealth Overlay (Recommended)
+Launch the modern GUI with stealth features:
 ```bash
-python audio_devices.py
+python gui.py
 ```
+- **Select Microphone**: Choose your audio input from the dropdown menu.
+- **Start Session**: Begins the STT-NLP pipeline. The window becomes click-through and invisible to screen captures.
+- **Interact**: Hover over the sidebar to re-enable mouse interaction.
 
-### Step 2: Configure and Launch
-1. Open `main.py` and set `DEVICE_INDEX` to your microphone's index (default is `1`).
-2. Start the assistant:
+### Option B: Command Line Interface
+Launch the terminal-based assistant:
 ```bash
 python main.py
 ```
+- Follow the prompt to select your microphone device index.
+- Transcripts and AI answers will be printed directly in the console.
 
 ---
 
-## Project Structure
+## 📂 Project Structure
 
--   `main.py`: The central orchestrator for the STT-NLP-LLM pipeline.
+-   `gui.py`: The modern stealth overlay with click-through and capture-blocking logic.
+-   `main.py`: The central CLI orchestrator for the STT-NLP-LLM pipeline.
 -   `audio_devices.py`: Utility script to list available audio input indices.
 -   `stt/`: Contains the `RealtimeSTT` integration and configuration.
 -   `nlp/`:
@@ -92,14 +82,6 @@ python main.py
 
 ---
 
-## Troubleshooting
+## ⚠️ Disclaimer
 
--   **Audio Input Issues**: Ensure the `DEVICE_INDEX` in `main.py` matches the output from `audio_devices.py`.
--   **API Rate Limits**: Check your Groq dashboard if you encounter connection or rate-limit errors.
--   **Transcription Accuracy**: If performance allows, the models can be upgraded to `small.en` or `medium.en` in `stt/realtimeSTT.py` for higher precision.
-
----
-
-## Disclaimer
-
-This tool is designed for educational and preparation purposes. Please ensure your use of this assistant complies with the ethical guidelines and rules of your specific interview process.
+This tool is designed for educational and preparation purposes. Use of this assistant during an actual interview may violate the terms of the interview process or company policy. Users are responsible for ensuring compliance with all applicable rules and ethical guidelines.

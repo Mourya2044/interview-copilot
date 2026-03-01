@@ -2,3 +2,4 @@ python-dotenv
 groq
 RealtimeSTT
 pyaudio
+customtkinter
