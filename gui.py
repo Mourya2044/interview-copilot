@@ -50,8 +50,9 @@ class UltraMinimalHUD(ctk.CTk):
         self.grid_rowconfigure(0, weight=1)
 
         # 1. DRAG HANDLE
-        self.drag_handle = ctk.CTkFrame(self, width=25, corner_radius=0, fg_color="#1a1a1a")
+        self.drag_handle = ctk.CTkFrame(self, width=25, corner_radius=0, fg_color="#1a1a1a",)
         self.drag_handle.grid(row=0, column=0, sticky="nsew")
+        self.drag_handle.configure(cursor="fleur")
         
         self.handle_label = ctk.CTkLabel(self.drag_handle, text="⋮\n⋮\n⋮", padx=10, 
                                         text_color="#444", font=("Arial", 16))
@@ -135,6 +136,13 @@ class UltraMinimalHUD(ctk.CTk):
                 if wx <= px <= wx + ww and wy <= py <= wy + wh:
                     over_interactive = True
                     break
+            
+            ax = self.answer_box.winfo_rootx()
+            ay = self.answer_box.winfo_rooty()
+            aw = self.answer_box.winfo_width()
+            ah = self.answer_box.winfo_height()
+            if ax + aw - 100 <= px <= ax + aw and ay <= py <= ay + ah:
+                over_interactive = True
             
             hwnd = ctypes.windll.user32.GetParent(self.winfo_id()) or self.winfo_id()
             if over_interactive:
