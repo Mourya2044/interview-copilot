@@ -27,9 +27,10 @@ class NLPClassifier:
 
     MAX_HISTORY = 10  # prevent token explosion
 
-    def __init__(self):
+    def __init__(self, console_output=False):
         self.client = AsyncGroq()
         self.history: list[dict] = []
+        self.console_output = console_output
 
     async def classify(self, text: str) -> ClassificationResult:
         # print(f"[CLASSIFIER] Classifying: {text}")
@@ -93,7 +94,8 @@ Provide extremely concise reasoning.
             content = response.choices[0].message.content
             parsed = json.loads(content)  # type: ignore
 
-            print(f"[CLASSIFIER] Parsed result: {parsed}")
+            if self.console_output:
+                print(f"[CLASSIFIER] Parsed result: {parsed}")
 
             # Store assistant reply to maintain continuity
             if parsed.get("action") == "respond":

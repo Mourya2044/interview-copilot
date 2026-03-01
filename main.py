@@ -9,11 +9,18 @@ from nlp.answer_generation import AnswerGenerator
 dotenv.load_dotenv()
 
 DEVICE_INDEX = 1
-classifier = NLPClassifier()
+classifier = NLPClassifier(console_output=True)
 llm_generator = AnswerGenerator()
 
+interviewer_stt = None
+
 async def final_transcription(text):
-    # print(f"[Final Transcription]: {text}")
+    print(f"[Final Transcription]: {text}")
+    if "stop" in text.strip().lower():
+        print("[System] 'stop' command received. Stopping...")
+        if interviewer_stt is not None:
+            interviewer_stt.stop()
+        return
     res = await classifier.classify(text)
     print(f"[Classification Result]: {res}")
     if res.action == "respond":
@@ -25,15 +32,17 @@ async def final_transcription(text):
         print(f"[LLM]: {llm_answer.text}")
 
 def partial_transcription(text):
-    print(f"\r[Interviewer] partial: {text}", end="", flush=True)
+    print(f"\r[Interviewer] partial: {text}", flush=True)
 
 async def main():    
+    global interviewer_stt
     interviewer_stt = realtimeSTT(
         name="Interviewer",
         language="en",
         input_device_index=DEVICE_INDEX,
         partial_update=partial_transcription,
         final_update=final_transcription,
+        console_output=True
     )
     
     try:
@@ -43,7 +52,8 @@ async def main():
     except asyncio.CancelledError:
         pass
     except KeyboardInterrupt:
-        interviewer_stt.stop()
+        if interviewer_stt is not None:
+            interviewer_stt.stop()
 
 if __name__ == "__main__":
     try:
